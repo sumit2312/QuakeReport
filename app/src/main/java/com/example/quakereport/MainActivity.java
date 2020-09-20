@@ -28,246 +28,109 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
     /** Tag for the log messages */
     public static final String LOG_TAG = MainActivity.class.getSimpleName();
 
+    /** URL for earthquake data from the USGS dataset */
     private static final String USGS_REQUEST_URL =
-            "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&limit=25";
+            "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time&minmag=3&limit=10";
 
-    ArrayList<Earthquake> earthquakes_output = new ArrayList<>();
 
-    private ArrayList<Earthquake> myArray = new ArrayList<>();
+    /** Adapter for the list of earthquakes */
+    private EarthquakeAdapter mAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Create a fake list of earthquake locations.
-           // Uses query from QueryUtil
-//        earthquakes_output = QueryUtils.extractEarthquakes();
-//        earthquakes.add(new Earthquake("7.2","San Francisco","Feb 2,2020"));
-//        earthquakes.add(new Earthquake("4.2","San Francisco","Feb 5,2020"));
-
-
-
-
         // Find a reference to the {@link ListView} in the layout
         ListView earthquakeListView = (ListView) findViewById(R.id.list);
 
-        // Create a new adapter that takes the list of earthquakes as input
-//        EarthquakeAdapter adapter = new EarthquakeAdapter(this,earthquakes);
+        // Create a new adapter that takes an empty list of earthquakes as input
+        mAdapter = new EarthquakeAdapter(this, new ArrayList<Earthquake>());
 
         // Set the adapter on the {@link ListView}
         // so the list can be populated in the user interface
-//        earthquakeListView.setAdapter(adapter);
+        earthquakeListView.setAdapter(mAdapter);
 
-        for(Earthquake x:earthquakes_output){
-            Log.d("print","sf"+x.getmLocation()+" "+x.getTimeInMilliseconds());
-        }
+        // Set an item click listener on the ListView, which sends an intent to a web browser
+        // to open a website with more information about the selected earthquake.
+        earthquakeListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int position, long l) {
+                // Find the current earthquake that was clicked on
+                Earthquake currentEarthquake = mAdapter.getItem(position);
 
-        Context context = this;
-        EarthquakeAsyncTask task = new EarthquakeAsyncTask(context);
-        task.execute();
+                // Convert the String URL into a URI object (to pass into the Intent constructor)
+                Uri earthquakeUri = Uri.parse(currentEarthquake.getUrl());
+
+                // Create a new intent to view the earthquake URI
+                Intent websiteIntent = new Intent(Intent.ACTION_VIEW, earthquakeUri);
+
+                // Send the intent to launch a new activity
+                startActivity(websiteIntent);
+            }
+        });
+
+        // Start the AsyncTask to fetch the earthquake data
+        EarthquakeAsyncTask task = new EarthquakeAsyncTask();
+        task.execute(USGS_REQUEST_URL);
     }
 
     /**
      * {@link AsyncTask} to perform the network request on a background thread, and then
-     * update the UI with the first earthquake in the response.
+     * update the UI with the list of earthquakes in the response.
+     *
+     * AsyncTask has three generic parameters: the input type, a type used for progress updates, and
+     * an output type. Our task will take a String URL, and return an Earthquake. We won't do
+     * progress updates, so the second generic is just Void.
+     *
+     * We'll only override two of the methods of AsyncTask: doInBackground() and onPostExecute().
+     * The doInBackground() method runs on a background thread, so it can run long-running code
+     * (like network activity), without interfering with the responsiveness of the app.
+     * Then onPostExecute() is passed the result of doInBackground() method, but runs on the
+     * UI thread, so it can use the produced data to update the UI.
      */
-    private class EarthquakeAsyncTask extends AsyncTask<URL, Void, ArrayList<Earthquake>> {
-
-        private Context mContext;
-
-        public EarthquakeAsyncTask (Context context){
-            mContext = context;
-        }
-
-        @Override
-        protected ArrayList<Earthquake> doInBackground(URL... urls) {
-            // Create URL object
-            URL url = createUrl(USGS_REQUEST_URL);
-
-            // Perform HTTP request to the URL and receive a JSON response back
-            String jsonResponse = "";
-            try {
-                jsonResponse = makeHttpRequest(url);
-            } catch (IOException e) {
-                // TODO Handle the IOException
-            }
-
-            // Extract relevant fields from the JSON response and create an {@link Event} object
-            ArrayList<Earthquake> earthquake = extractFeatureFromJson(jsonResponse);
-
-            // Return the {@link Event} object as the result fo the {@link TsunamiAsyncTask}
-            return earthquake;
-        }
-
-
-
+    private class EarthquakeAsyncTask extends AsyncTask<String, Void, List<Earthquake>> {
 
         /**
-         * Update the screen with the given earthquake (which was the result of the
-         * {@link }).
+         * This method runs on a background thread and performs the network request.
+         * We should not update the UI from a background thread, so we return a list of
+         * {@link Earthquake}s as the result.
          */
         @Override
-        protected void onPostExecute(ArrayList<Earthquake> er) {
-            if (er.size() == 0) {
-                return;
-            }
-            for(Earthquake x:er){
-                Log.d("sss",x.getUrl());
-                myArray.add(x);
-            }
-
-            for(Earthquake x:myArray){
-                Log.d("ssprints",x.getUrl());
-                earthquakes_output.add(x);
-            }
-
-            ListView earthquakeListView = (ListView) findViewById(R.id.list);
-
-            // Create a new adapter that takes the list of earthquakes as input
-            final EarthquakeAdapter adapter = new EarthquakeAdapter(mContext, earthquakes_output);
-
-            // Set the adapter on the {@link ListView}
-            // so the list can be populated in the user interface
-            earthquakeListView.setAdapter(adapter);
-
-            earthquakeListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-                @Override
-                public void onItemClick(AdapterView<?> adapterView, View view, int position, long l) {
-                    // Find the current earthquake that was clicked on
-                    Earthquake currentEarthquake = adapter.getItem(position);
-
-                    // Convert the String URL into a URI object (to pass into the Intent constructor)
-                    Uri earthquakeUri = Uri.parse(currentEarthquake.getUrl());
-
-                    // Create a new intent to view the earthquake URI
-                    Intent websiteIntent = new Intent(Intent.ACTION_VIEW, earthquakeUri);
-
-                    // Send the intent to launch a new activity
-                    startActivity(websiteIntent);
-                }
-            });
-            return;
-
-        }
-
-        /**
-         * Returns new URL object from the given string URL.
-         */
-        private URL createUrl(String stringUrl) {
-            URL url = null;
-            try {
-                url = new URL(stringUrl);
-            } catch (MalformedURLException exception) {
-                Log.e(LOG_TAG, "Error with creating URL", exception);
-                return null;
-            }
-            return url;
-        }
-
-        /**
-         * Make an HTTP request to the given URL and return a String as the response.
-         */
-        private String makeHttpRequest(URL url) throws IOException {
-            String jsonResponse = "";
-
-            // If the URL is null, then return early.
-            if (url == null) {
-                return jsonResponse;
-            }
-
-            HttpURLConnection urlConnection = null;
-            InputStream inputStream = null;
-            try {
-                urlConnection = (HttpURLConnection) url.openConnection();
-                urlConnection.setRequestMethod("GET");
-                urlConnection.setReadTimeout(10000 /* milliseconds */);
-                urlConnection.setConnectTimeout(15000 /* milliseconds */);
-                urlConnection.connect();
-
-                // If the request was successful (response code 200),
-                // then read the input stream and parse the response.
-                if (urlConnection.getResponseCode() == 200) {
-                    inputStream = urlConnection.getInputStream();
-                    jsonResponse = readFromStream(inputStream);
-                } else {
-                    Log.e(LOG_TAG, "Error response code: " + urlConnection.getResponseCode());
-                }
-            } catch (IOException e) {
-                Log.e(LOG_TAG, "Problem retrieving the earthquake JSON results.", e);
-            } finally {
-                if (urlConnection != null) {
-                    urlConnection.disconnect();
-                }
-                if (inputStream != null) {
-                    // function must handle java.io.IOException here
-                    inputStream.close();
-                }
-            }
-            return jsonResponse;
-        }
-
-        /**
-         * Convert the {@link InputStream} into a String which contains the
-         * whole JSON response from the server.
-         */
-        private String readFromStream(InputStream inputStream) throws IOException {
-            StringBuilder output = new StringBuilder();
-            if (inputStream != null) {
-                InputStreamReader inputStreamReader = new InputStreamReader(inputStream, Charset.forName("UTF-8"));
-                BufferedReader reader = new BufferedReader(inputStreamReader);
-                String line = reader.readLine();
-                while (line != null) {
-                    output.append(line);
-                    line = reader.readLine();
-                }
-            }
-            return output.toString();
-        }
-
-        /**
-         * Return an {@link } object by parsing out information
-         * about the first earthquake from the input earthquakeJSON string.
-         */
-        private ArrayList<Earthquake> extractFeatureFromJson(String earthquakeJSON) {
-
-            // If the JSON string is empty or null, then return early.
-            if (TextUtils.isEmpty(earthquakeJSON)) {
+        protected List<Earthquake> doInBackground(String... urls) {
+            // Don't perform the request if there are no URLs, or the first URL is null
+            if (urls.length < 1 || urls[0] == null) {
                 return null;
             }
 
-            try {
-                JSONObject baseJsonResponse = new JSONObject(earthquakeJSON);
-                JSONArray arr = baseJsonResponse.getJSONArray("features");
-                ArrayList<Earthquake> earthquakes = new ArrayList<>();
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject obj = arr.getJSONObject(i);
-                    JSONObject properties = obj.getJSONObject("properties");
-                    String mag = properties.getString("mag");
-                    String place = properties.getString("place");
-                    String time = properties.getString("time");
+            List<Earthquake> result = QueryUtils.fetchEarthquakeData(urls[0]);
+            return result;
+        }
 
-                    double currMag = Double.parseDouble(mag);
+        /**
+         * This method runs on the main UI thread after the background work has been
+         * completed. This method receives as input, the return value from the doInBackground()
+         * method. First we clear out the adapter, to get rid of earthquake data from a previous
+         * query to USGS. Then we update the adapter with the new list of earthquakes,
+         * which will trigger the ListView to re-populate its list items.
+         */
+        @Override
+        protected void onPostExecute(List<Earthquake> data) {
+            // Clear the adapter of previous earthquake data
+            mAdapter.clear();
 
-                    long timeInMilliseconds = Long.parseLong(time);
-
-                    // Extract the value for the key called "url"
-                    String url = properties.getString("url");
-
-                    earthquakes.add(new Earthquake(currMag, place, timeInMilliseconds, url));
-                }
-                return earthquakes;
-            } catch (JSONException e) {
-                Log.e(LOG_TAG, "Problem parsing the earthquake JSON results", e);
+            // If there is a valid list of {@link Earthquake}s, then add them to the adapter's
+            // data set. This will trigger the ListView to update.
+            if (data != null && !data.isEmpty()) {
+                mAdapter.addAll(data);
             }
-            return null;
         }
     }
-
 }

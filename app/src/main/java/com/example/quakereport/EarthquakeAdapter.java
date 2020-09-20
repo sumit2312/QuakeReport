@@ -38,12 +38,7 @@ public class EarthquakeAdapter extends ArrayAdapter<Earthquake> {
         super(context,0,earthquakes);
     }
 
-    @Override
-    public void notifyDataSetChanged() {
-//        size = objects.size();
 
-        super.notifyDataSetChanged();
-    }
 
     /**
      * Returns a list item view that displays information about the earthquake at the given position
