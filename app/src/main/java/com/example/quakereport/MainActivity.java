@@ -1,32 +1,27 @@
 package com.example.quakereport;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.preference.PreferenceManager;
 
-import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
+import android.widget.TextView;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,6 +38,11 @@ public class MainActivity extends AppCompatActivity {
     /** Adapter for the list of earthquakes */
     private EarthquakeAdapter mAdapter;
 
+    /** TextView that is displayed when the list is empty */
+    private TextView mEmptyStateTextView;
+
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -50,6 +50,8 @@ public class MainActivity extends AppCompatActivity {
 
         // Find a reference to the {@link ListView} in the layout
         ListView earthquakeListView = (ListView) findViewById(R.id.list);
+
+        mEmptyStateTextView = (TextView) findViewById(R.id.empty_view);
 
         // Create a new adapter that takes an empty list of earthquakes as input
         mAdapter = new EarthquakeAdapter(this, new ArrayList<Earthquake>());
@@ -77,9 +79,85 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+
+
+        //  Read from SharedPreferences and check for the value associated with the key
+
+        SharedPreferences sharedPrefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String minMagnitude = sharedPrefs.getString(
+                getString(R.string.settings_min_magnitude_key),
+                getString(R.string.settings_min_magnitude_default));
+
+        String orderBy = sharedPrefs.getString(
+                getString(R.string.settings_order_by_key),
+                getString(R.string.settings_order_by_default)
+        );
+
+        Uri baseUri = Uri.parse(USGS_REQUEST_URL);
+        Uri.Builder uriBuilder = baseUri.buildUpon();
+
+        uriBuilder.appendQueryParameter("format", "geojson");
+        uriBuilder.appendQueryParameter("limit", "10");
+        uriBuilder.appendQueryParameter("minmag", minMagnitude);
+        uriBuilder.appendQueryParameter("orderby", orderBy);
+
+        String NEW_URL = uriBuilder.toString();
+
+
+
+        // Get a reference to the ConnectivityManager to check state of network connectivity
+        ConnectivityManager connMgr = (ConnectivityManager)
+                getSystemService(Context.CONNECTIVITY_SERVICE);
+
+        // Get details on the currently active default data network
+        NetworkInfo networkInfo = connMgr.getActiveNetworkInfo();
+
+
+        // If there is a network connection, fetch data
+        if (networkInfo != null && networkInfo.isConnected()) {
+
+            // Start the AsyncTask to fetch the earthquake data
+
+            EarthquakeAsyncTask task = new EarthquakeAsyncTask();
+
+            task.execute(NEW_URL);
+        } else {
+            // Otherwise, display error
+            // First, hide loading indicator so error message will be visible
+            View loadingIndicator = findViewById(R.id.loading_indicator);
+            loadingIndicator.setVisibility(View.GONE);
+
+            // Update empty state with no connection error message
+            mEmptyStateTextView.setText(R.string.no_internet_connection);
+        }
+
+
         // Start the AsyncTask to fetch the earthquake data
-        EarthquakeAsyncTask task = new EarthquakeAsyncTask();
-        task.execute(USGS_REQUEST_URL);
+
+//        EarthquakeAsyncTask task = new EarthquakeAsyncTask();
+//        task.execute(USGS_REQUEST_URL);
+//        task.execute(NEW_URL);
+    }
+
+
+
+
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_settings) {
+            Intent settingsIntent = new Intent(this, SettingsActivity.class);
+            startActivity(settingsIntent);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     /**
@@ -110,6 +188,8 @@ public class MainActivity extends AppCompatActivity {
                 return null;
             }
 
+
+
             List<Earthquake> result = QueryUtils.fetchEarthquakeData(urls[0]);
             return result;
         }
@@ -123,13 +203,22 @@ public class MainActivity extends AppCompatActivity {
          */
         @Override
         protected void onPostExecute(List<Earthquake> data) {
+            // Hide loading indicator because the data has been loaded
+            View loadingIndicator = findViewById(R.id.loading_indicator);
+            loadingIndicator.setVisibility(View.GONE);
+
+
             // Clear the adapter of previous earthquake data
+
             mAdapter.clear();
 
             // If there is a valid list of {@link Earthquake}s, then add them to the adapter's
             // data set. This will trigger the ListView to update.
             if (data != null && !data.isEmpty()) {
                 mAdapter.addAll(data);
+            }else{
+                // Set empty state text to display "No earthquakes found."
+                mEmptyStateTextView.setText(R.string.no_earthquakes);
             }
         }
     }
